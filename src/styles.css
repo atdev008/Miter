@@ -929,6 +929,119 @@ th {
   text-transform: uppercase;
 }
 
+.assistantDock {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 30;
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.assistantFab,
+.assistantPanel {
+  pointer-events: auto;
+}
+
+.assistantFab {
+  display: inline-grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  color: #ffffff;
+  border-radius: 999px;
+  background: #247257;
+  box-shadow: 0 16px 34px rgba(31, 45, 39, 0.28);
+  cursor: pointer;
+  transition: background 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.assistantFab:hover {
+  background: #1f604a;
+  transform: translateY(-1px);
+  box-shadow: 0 18px 42px rgba(31, 45, 39, 0.32);
+}
+
+.assistantPanel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(380px, calc(100vw - 32px));
+  height: min(520px, calc(100vh - 112px));
+  overflow: hidden;
+  border: 1px solid #cad6d1;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(31, 45, 39, 0.22);
+}
+
+.assistantHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-bottom: 1px solid #e1e7e4;
+}
+
+.assistantMessages {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  overflow-y: auto;
+  padding: 14px;
+  background: #f8faf9;
+}
+
+.chatBubble {
+  max-width: 88%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+  color: #1f312c;
+  border: 1px solid #dfe8e4;
+  background: #ffffff;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.chatBubble.user {
+  justify-self: end;
+  color: #ffffff;
+  border-color: #247257;
+  background: #247257;
+}
+
+.chatBubble.assistant {
+  justify-self: start;
+}
+
+.assistantComposer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid #e1e7e4;
+  background: #ffffff;
+}
+
+.assistantSend {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: #ffffff;
+  border-radius: 8px;
+  background: #247257;
+  cursor: pointer;
+}
+
+.assistantSend:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 @media (max-width: 1180px) {
   .workflow {
     grid-template-columns: repeat(3, minmax(160px, 1fr));
@@ -999,6 +1112,11 @@ th {
   .phoneFrame {
     width: min(220px, 76%);
   }
+
+  .assistantDock {
+    right: 18px;
+    bottom: 18px;
+  }
 }
 
 @media (max-width: 560px) {
@@ -1008,5 +1126,20 @@ th {
 
   .node {
     min-height: 84px;
+  }
+
+  .assistantDock {
+    right: 12px;
+    bottom: 12px;
+  }
+
+  .assistantPanel {
+    width: calc(100vw - 24px);
+    height: min(500px, calc(100vh - 96px));
+  }
+
+  .assistantFab {
+    width: 58px;
+    height: 58px;
   }
 }

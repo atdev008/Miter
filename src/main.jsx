@@ -15,6 +15,8 @@ import {
   Image,
   LockKeyhole,
   LogOut,
+  MessageCircle,
+  Send,
   ScanLine,
   Search,
   Server,
@@ -125,6 +127,7 @@ const statusMeta = {
 const TYPHOON_BASE_URL = import.meta.env.VITE_TYPHOON_BASE_URL || 'https://api.opentyphoon.ai/v1';
 const TYPHOON_API_KEY = import.meta.env.VITE_TYPHOON_API_KEY || '';
 const TYPHOON_OCR_MODEL = import.meta.env.VITE_TYPHOON_OCR_MODEL || 'typhoon-ocr';
+const TYPHOON_CHAT_MODEL = import.meta.env.VITE_TYPHOON_CHAT_MODEL || 'typhoon-v2.1-12b-instruct';
 
 const thaiDigits = {
   '๐': '0',
@@ -226,6 +229,46 @@ async function readMeterDigitsWithTyphoon(file) {
     rawText: content,
     imageUrl
   };
+}
+
+async function askTyphoonAssistant(question, context) {
+  if (!TYPHOON_API_KEY) {
+    throw new Error('Missing VITE_TYPHOON_API_KEY');
+  }
+
+  const response = await fetch(`${TYPHOON_BASE_URL.replace(/\/$/, '')}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${TYPHOON_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: TYPHOON_CHAT_MODEL,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an assistant for a fuel meter OCR review app. Answer in Thai, be concise, and use the supplied OCR context when relevant.'
+        },
+        {
+          role: 'user',
+          content: `Current OCR context:\n${JSON.stringify(context, null, 2)}\n\nQuestion: ${question}`
+        }
+      ],
+      max_tokens: 512,
+      temperature: 0.3,
+      top_p: 0.9,
+      repetition_penalty: 1.05,
+      stream: false
+    })
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(errorBody || `Typhoon assistant failed with HTTP ${response.status}`);
+  }
+
+  const payload = await response.json();
+  return payload?.choices?.[0]?.message?.content?.trim() || 'ไม่พบคำตอบ';
 }
 
 function App() {
@@ -426,6 +469,18 @@ function App() {
 
         <ReportTable />
       </section>
+      <FloatingAssistant
+        context={{
+          file: selectedFile,
+          userInput,
+          ocrReading: result.ocr,
+          confidence: result.confidence,
+          difference: result.difference,
+          status: result.status,
+          step: activeStep.title,
+          rawOcr: ocrState.rawText
+        }}
+      />
     </main>
   );
 }
@@ -757,6 +812,90 @@ function ReportTable() {
         </table>
       </div>
     </section>
+  );
+}
+
+function FloatingAssistant({ context }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [input, setInput] = useState('');
+  const [isThinking, setIsThinking] = useState(false);
+  const [messages, setMessages] = useState([
+    {
+      role: 'assistant',
+      content: 'ถามข้อมูลเกี่ยวกับรูป OCR, สถานะ, ตัวเลขที่อ่านได้ หรือเหตุผลที่ขึ้น FAIL ได้เลย'
+    }
+  ]);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    const question = input.trim();
+    if (!question || isThinking) return;
+
+    setInput('');
+    setIsThinking(true);
+    setMessages((current) => [...current, { role: 'user', content: question }]);
+
+    try {
+      const answer = await askTyphoonAssistant(question, context);
+      setMessages((current) => [...current, { role: 'assistant', content: answer }]);
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          role: 'assistant',
+          content: error.message || 'เรียก Typhoon assistant ไม่สำเร็จ'
+        }
+      ]);
+    } finally {
+      setIsThinking(false);
+    }
+  };
+
+  return (
+    <div className="assistantDock">
+      {isOpen && (
+        <section className="assistantPanel" aria-label="OCR assistant">
+          <div className="assistantHeader">
+            <div>
+              <p className="panelKicker">Typhoon Assistant</p>
+              <h2>Ask OCR Data</h2>
+            </div>
+            <button className="iconButton" type="button" onClick={() => setIsOpen(false)} aria-label="Close assistant">
+              <X size={18} />
+            </button>
+          </div>
+          <div className="assistantMessages">
+            {messages.map((message, index) => (
+              <div className={`chatBubble ${message.role}`} key={`${message.role}-${index}`}>
+                {message.content}
+              </div>
+            ))}
+            {isThinking && <div className="chatBubble assistant">กำลังคิด...</div>}
+          </div>
+          <form className="assistantComposer" onSubmit={handleSubmit}>
+            <input
+              aria-label="Ask assistant"
+              placeholder="ถามข้อมูล..."
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+            />
+            <button className="assistantSend" type="submit" aria-label="Send question" disabled={!input.trim() || isThinking}>
+              <Send size={18} />
+            </button>
+          </form>
+        </section>
+      )}
+
+      <button
+        className="assistantFab"
+        type="button"
+        aria-label={isOpen ? 'Close assistant' : 'Open assistant'}
+        title={isOpen ? 'Close assistant' : 'Open assistant'}
+        onClick={() => setIsOpen((value) => !value)}
+      >
+        {isOpen ? <X size={26} /> : <MessageCircle size={28} />}
+      </button>
+    </div>
   );
 }
 
