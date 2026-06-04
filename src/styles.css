@@ -498,6 +498,12 @@ dt,
   font-weight: 800;
 }
 
+.dropZone small {
+  color: #657870;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
 .formStack {
   display: grid;
   gap: 14px;
@@ -615,6 +621,20 @@ input:focus {
   font-weight: 800;
 }
 
+.ocrReadout.error {
+  background: #fdebea;
+}
+
+.ocrReadout.error strong {
+  color: #a7352d;
+  font-size: clamp(1.8rem, 4vw, 3rem);
+}
+
+.ocrReadout.reading strong {
+  color: #596d65;
+  font-size: clamp(1.8rem, 4vw, 3rem);
+}
+
 .validationList {
   display: grid;
   gap: 12px;
@@ -723,6 +743,8 @@ input:focus {
 }
 
 .phoneFrame {
+  position: relative;
+  overflow: hidden;
   width: min(230px, 80%);
   aspect-ratio: 9 / 14;
   padding: 22px 16px;
@@ -730,6 +752,24 @@ input:focus {
   border-radius: 8px;
   background: #d7ddd9;
   box-shadow: 0 18px 36px rgba(31, 43, 38, 0.16);
+}
+
+.phoneFrame img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.phoneFrame.uploaded .meterBody {
+  position: relative;
+  z-index: 1;
+  background: rgba(30, 42, 37, 0.18);
+}
+
+.phoneFrame.uploaded .meterMarks {
+  display: none;
 }
 
 .meterBody {

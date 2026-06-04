@@ -118,8 +118,115 @@ const statusMeta = {
   FAIL: { label: 'FAIL', icon: X },
   LOW_CONFIDENCE: { label: 'LOW CONF.', icon: AlertTriangle },
   NO_METER_FOUND: { label: 'NO METER', icon: CircleDashed },
+  PROCESSING: { label: 'PROCESSING', icon: CircleDashed },
   ERROR: { label: 'ERROR', icon: AlertTriangle }
 };
+
+const TYPHOON_BASE_URL = import.meta.env.VITE_TYPHOON_BASE_URL || 'https://api.opentyphoon.ai/v1';
+const TYPHOON_API_KEY = import.meta.env.VITE_TYPHOON_API_KEY || '';
+const TYPHOON_OCR_MODEL = import.meta.env.VITE_TYPHOON_OCR_MODEL || 'typhoon-ocr';
+
+const thaiDigits = {
+  '๐': '0',
+  '๑': '1',
+  '๒': '2',
+  '๓': '3',
+  '๔': '4',
+  '๕': '5',
+  '๖': '6',
+  '๗': '7',
+  '๘': '8',
+  '๙': '9'
+};
+
+function normalizeDigits(value = '') {
+  return String(value)
+    .replace(/[๐-๙]/g, (digit) => thaiDigits[digit] || digit)
+    .replace(/[Oo]/g, '0')
+    .replace(/[Il|]/g, '1')
+    .replace(/[^\d]/g, '');
+}
+
+function extractMeterDigits(value = '') {
+  const normalizedText = String(value).replace(/[๐-๙]/g, (digit) => thaiDigits[digit] || digit);
+  const candidates = normalizedText.match(/[0-9OoIl|][0-9OoIl|,\s.\-]{1,}[0-9OoIl|]/g) || [];
+  const digitCandidates = candidates
+    .map(normalizeDigits)
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+  return digitCandidates[0] || normalizeDigits(normalizedText);
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Cannot read uploaded image'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function readMeterDigitsWithTyphoon(file) {
+  if (!TYPHOON_API_KEY) {
+    throw new Error('Missing VITE_TYPHOON_API_KEY');
+  }
+
+  const imageUrl = await fileToDataUrl(file);
+  const response = await fetch(`${TYPHOON_BASE_URL.replace(/\/$/, '')}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${TYPHOON_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: TYPHOON_OCR_MODEL,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'Extract only the fuel meter reading digits from this image. Return compact JSON only: {"digits":"...", "confidence": 0-100}. If no meter reading is visible, use {"digits":"", "confidence":0}.'
+            },
+            {
+              type: 'image_url',
+              image_url: { url: imageUrl }
+            }
+          ]
+        }
+      ],
+      max_tokens: 512,
+      temperature: 0.1,
+      top_p: 0.6,
+      repetition_penalty: 1.2,
+      stream: false
+    })
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(errorBody || `Typhoon OCR failed with HTTP ${response.status}`);
+  }
+
+  const payload = await response.json();
+  const content = payload?.choices?.[0]?.message?.content || '';
+  let parsed = {};
+
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    parsed = { digits: extractMeterDigits(content), confidence: 0, rawText: content };
+  }
+
+  const digits = extractMeterDigits(parsed.digits || parsed.natural_text || content);
+  return {
+    digits,
+    confidence: Number.isFinite(Number(parsed.confidence)) ? Number(parsed.confidence) : 0,
+    rawText: content,
+    imageUrl
+  };
+}
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -127,14 +234,81 @@ function App() {
   const [active, setActive] = useState(0);
   const [selectedFile, setSelectedFile] = useState('FM-20260604-002.jpg');
   const [userInput, setUserInput] = useState('099240');
+  const [uploadedImage, setUploadedImage] = useState('');
+  const [ocrState, setOcrState] = useState({
+    status: 'idle',
+    digits: '099248',
+    confidence: 93.1,
+    error: '',
+    rawText: ''
+  });
   const activeStep = steps[active];
 
   const result = useMemo(() => {
-    const confidence = active >= 3 ? 93.1 : 0;
-    const ocr = active >= 3 ? '099248' : '-';
-    const status = active < 3 ? 'PROCESSING' : ocr === userInput ? 'PASS' : 'FAIL';
-    return { confidence, ocr, status, difference: active >= 5 ? '+8' : '-' };
-  }, [active, userInput]);
+    const hasOcrResult = ocrState.status === 'done';
+    const isReading = ocrState.status === 'reading';
+    const isError = ocrState.status === 'error';
+    const ocr = active >= 3 && hasOcrResult ? ocrState.digits || '-' : '-';
+    const confidence = active >= 3 && hasOcrResult ? ocrState.confidence : 0;
+    const userDigits = normalizeDigits(userInput);
+    const ocrDigits = normalizeDigits(ocr);
+    let status = 'PROCESSING';
+    let difference = '-';
+
+    if (isError && active >= 3) {
+      status = 'ERROR';
+    } else if (active >= 3 && hasOcrResult) {
+      if (!ocrDigits) {
+        status = 'NO_METER_FOUND';
+      } else if (confidence > 0 && confidence < 85) {
+        status = 'LOW_CONFIDENCE';
+      } else {
+        status = ocrDigits === userDigits ? 'PASS' : 'FAIL';
+      }
+    } else if (isReading) {
+      status = 'PROCESSING';
+    }
+
+    if (active >= 5 && ocrDigits && userDigits) {
+      const diffValue = Number(ocrDigits) - Number(userDigits);
+      difference = diffValue > 0 ? `+${diffValue}` : String(diffValue);
+    }
+
+    return { confidence, ocr, status, difference, error: ocrState.error };
+  }, [active, ocrState, userInput]);
+
+  const handleImageUpload = async (file) => {
+    setSelectedFile(file.name);
+    setActive(3);
+    setOcrState({
+      status: 'reading',
+      digits: '',
+      confidence: 0,
+      error: '',
+      rawText: ''
+    });
+
+    try {
+      const ocr = await readMeterDigitsWithTyphoon(file);
+      setUploadedImage(ocr.imageUrl);
+      setOcrState({
+        status: 'done',
+        digits: ocr.digits,
+        confidence: ocr.confidence,
+        error: '',
+        rawText: ocr.rawText
+      });
+    } catch (error) {
+      setUploadedImage(URL.createObjectURL(file));
+      setOcrState({
+        status: 'error',
+        digits: '',
+        confidence: 0,
+        error: error.message || 'Typhoon OCR failed',
+        rawText: ''
+      });
+    }
+  };
 
   const goBack = () => setActive((value) => Math.max(0, value - 1));
   const goNext = () => setActive((value) => Math.min(steps.length - 1, value + 1));
@@ -212,9 +386,11 @@ function App() {
               active={active}
               selectedFile={selectedFile}
               setSelectedFile={setSelectedFile}
+              onImageUpload={handleImageUpload}
               userInput={userInput}
               setUserInput={setUserInput}
               result={result}
+              ocrState={ocrState}
             />
             <div className="stepControls">
               <button className="iconButton" onClick={goBack} disabled={active === 0} aria-label="Back">
@@ -230,10 +406,11 @@ function App() {
 
           <aside className="reviewPanel">
             <div className="meterPreview">
-              <div className="phoneFrame">
+              <div className={uploadedImage ? 'phoneFrame uploaded' : 'phoneFrame'}>
+                {uploadedImage && <img src={uploadedImage} alt="Uploaded meter" />}
                 <div className="meterBody">
                   <div className={active >= 1 ? 'lcdBox detected' : 'lcdBox'}>
-                    <span>{active >= 3 ? result.ocr : '099248'}</span>
+                    <span>{active >= 3 ? result.ocr : ocrState.digits || '099248'}</span>
                   </div>
                   <div className="meterMarks">
                     <i />
@@ -349,19 +526,32 @@ function Workflow({ active, setActive }) {
   );
 }
 
-function StepBody({ active, selectedFile, setSelectedFile, userInput, setUserInput, result }) {
+function StepBody({
+  active,
+  selectedFile,
+  setSelectedFile,
+  onImageUpload,
+  userInput,
+  setUserInput,
+  result,
+  ocrState
+}) {
   if (active === 0) {
     return (
       <div className="stepBody uploadGrid">
         <label className="dropZone">
           <Image size={30} />
           <span>{selectedFile}</span>
+          {ocrState.status === 'reading' && <small>Reading digits with Typhoon OCR...</small>}
           <input
             type="file"
             accept="image/*"
             onChange={(event) => {
               const file = event.target.files?.[0];
-              if (file) setSelectedFile(file.name);
+              if (file) {
+                setSelectedFile(file.name);
+                onImageUpload(file);
+              }
             }}
           />
         </label>
@@ -407,20 +597,28 @@ function StepBody({ active, selectedFile, setSelectedFile, userInput, setUserInp
 
   if (active === 3) {
     return (
-      <div className="stepBody ocrReadout">
+      <div className={`stepBody ocrReadout ${ocrState.status}`}>
         <span>OCR Reading</span>
-        <strong>{result.ocr}</strong>
-        <small>PaddleOCR confidence {result.confidence}%</small>
+        <strong>{ocrState.status === 'reading' ? 'Reading...' : result.ocr}</strong>
+        {ocrState.status === 'error' ? (
+          <small>{result.error}</small>
+        ) : (
+          <small>Typhoon OCR confidence {result.confidence}%</small>
+        )}
       </div>
     );
   }
 
   if (active === 4) {
+    const digitsOnly = /^\d+$/.test(result.ocr);
+    const lengthValid = result.ocr.length >= 4;
+    const confidenceValid = result.confidence >= 85 || result.confidence === 0;
+
     return (
       <div className="stepBody validationList">
-        <ValidationLine label="Digits only" pass={false} detail="OCR candidate is numeric after correction review" />
-        <ValidationLine label="Length validation" pass detail="6 digits expected" />
-        <ValidationLine label="Confidence threshold" pass detail="93.1% is above 85%" />
+        <ValidationLine label="Digits only" pass={digitsOnly} detail="OCR candidate is numeric after correction review" />
+        <ValidationLine label="Length validation" pass={lengthValid} detail="At least 4 digits expected" />
+        <ValidationLine label="Confidence threshold" pass={confidenceValid} detail={`${result.confidence}% confidence`} />
       </div>
     );
   }
