@@ -526,8 +526,11 @@ dt,
 }
 
 .dropZone {
+  position: relative;
   display: grid;
   place-items: center;
+  align-content: center;
+  gap: 14px;
   min-height: 250px;
   padding: 18px;
   text-align: center;
@@ -562,6 +565,101 @@ dt,
   color: #657870;
   font-size: 0.82rem;
   font-weight: 800;
+}
+
+.uploadActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.cameraOverlay {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(10, 18, 16, 0.76);
+}
+
+.cameraPanel {
+  display: grid;
+  gap: 14px;
+  width: min(820px, 100%);
+  max-height: calc(100vh - 36px);
+  padding: 16px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+}
+
+.cameraHeader,
+.cameraActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cameraHeader h3 {
+  margin: 2px 0 0;
+  color: #172620;
+  font-size: 1rem;
+}
+
+.cameraStage {
+  position: relative;
+  overflow: hidden;
+  min-height: 420px;
+  border-radius: 8px;
+  background: #0d1412;
+}
+
+.cameraStage video {
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  display: block;
+  object-fit: cover;
+}
+
+.cameraShade {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+
+.meterGuide {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  width: min(68%, 520px);
+  aspect-ratio: 7 / 1.45;
+  transform: translate(-50%, -50%);
+  border: 3px solid #f4d03f;
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 999px rgba(0, 0, 0, 0.34),
+    0 0 0 1px rgba(0, 0, 0, 0.35) inset;
+  pointer-events: none;
+}
+
+.meterGuide span {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  padding: 4px 8px;
+  color: #13241e;
+  white-space: nowrap;
+  border-radius: 6px;
+  background: #f4d03f;
+  transform: translateX(-50%);
+  font-size: 0.78rem;
+  font-weight: 900;
 }
 
 .formStack {
@@ -1211,6 +1309,7 @@ th {
 
   .stepControls > *,
   .topActions > *,
+  .uploadActions > *,
   .sectionHeader .secondaryButton {
     width: 100%;
   }
@@ -1223,6 +1322,31 @@ th {
   }
   .phoneFrame {
     width: min(320px, 84%);
+  }
+
+  .cameraOverlay {
+    padding: 10px;
+  }
+
+  .cameraPanel {
+    max-height: calc(100vh - 20px);
+    padding: 12px;
+  }
+
+  .cameraHeader,
+  .cameraActions,
+  .uploadActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cameraStage,
+  .cameraStage video {
+    min-height: min(62vh, 520px);
+  }
+
+  .meterGuide {
+    width: 78%;
   }
 
   .assistantDock {

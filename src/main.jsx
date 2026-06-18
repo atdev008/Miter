@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   AlertTriangle,
@@ -26,6 +26,8 @@ import {
   X
 } from 'lucide-react';
 import './styles.css';
+
+const CAMERA_CROP_FILE_NAME = 'meter-camera-crop.jpg';
 
 const steps = [
   {
@@ -156,15 +158,72 @@ function normalizeDigits(value = '') {
     .replace(/[^\d]/g, '');
 }
 
+function normalizeReadingValue(value = '') {
+  const cleaned = String(value)
+    .replace(/[๐-๙]/g, (digit) => thaiDigits[digit] || digit)
+    .replace(/[Oo]/g, '0')
+    .replace(/[Il|]/g, '1')
+    .replace(/,/g, '')
+    .replace(/[^\d.]/g, '');
+  const [integerPart, ...decimalParts] = cleaned.split('.');
+
+  if (decimalParts.length === 0) {
+    return integerPart;
+  }
+
+  const decimalPart = decimalParts.join('');
+  return decimalPart ? `${integerPart}.${decimalPart}` : integerPart;
+}
+
+function readingsMatch(left = '', right = '') {
+  const leftValue = normalizeReadingValue(left);
+  const rightValue = normalizeReadingValue(right);
+
+  if (!leftValue || !rightValue) {
+    return false;
+  }
+
+  if (leftValue.includes('.') || rightValue.includes('.')) {
+    return Number(leftValue) === Number(rightValue);
+  }
+
+  return leftValue === rightValue;
+}
+
+function formatReadingDifference(left = '', right = '') {
+  const leftValue = normalizeReadingValue(left);
+  const rightValue = normalizeReadingValue(right);
+
+  if (!leftValue || !rightValue) {
+    return '-';
+  }
+
+  const diffValue = Number(leftValue) - Number(rightValue);
+  if (!Number.isFinite(diffValue)) {
+    return '-';
+  }
+
+  return diffValue > 0 ? `+${diffValue}` : String(diffValue);
+}
+
+function scoreReadingCandidate(value = '') {
+  const readingValue = normalizeReadingValue(value);
+  const digitCount = normalizeDigits(readingValue).length;
+  const hasDecimal = readingValue.includes('.');
+  const hasDecimalShape = /^\d+\.\d+$/.test(readingValue);
+
+  return (digitCount * 10) + (hasDecimalShape ? 6 : hasDecimal ? 3 : 0);
+}
+
 function extractMeterDigits(value = '') {
   const normalizedText = String(value).replace(/[๐-๙]/g, (digit) => thaiDigits[digit] || digit);
   const candidates = normalizedText.match(/[0-9OoIl|][0-9OoIl|,\s.\-]{1,}[0-9OoIl|]/g) || [];
   const digitCandidates = candidates
-    .map(normalizeDigits)
+    .map(normalizeReadingValue)
     .filter(Boolean)
-    .sort((a, b) => b.length - a.length);
+    .sort((a, b) => scoreReadingCandidate(b) - scoreReadingCandidate(a));
 
-  return digitCandidates[0] || normalizeDigits(normalizedText);
+  return digitCandidates[0] || normalizeReadingValue(normalizedText);
 }
 
 function readAuthSession() {
@@ -189,6 +248,47 @@ function saveAuthSession(username) {
 
 function clearAuthSession() {
   window.localStorage.removeItem(AUTH_STORAGE_KEY);
+}
+
+function stopMediaStream(stream) {
+  stream?.getTracks().forEach((track) => track.stop());
+}
+
+function cropVideoFrameToFile(video, guide, fileName = CAMERA_CROP_FILE_NAME) {
+  return new Promise((resolve, reject) => {
+    if (!video.videoWidth || !video.videoHeight) {
+      reject(new Error('Camera is not ready yet'));
+      return;
+    }
+
+    const videoRect = video.getBoundingClientRect();
+    const guideRect = guide.getBoundingClientRect();
+    const scale = Math.max(videoRect.width / video.videoWidth, videoRect.height / video.videoHeight);
+    const renderedWidth = video.videoWidth * scale;
+    const renderedHeight = video.videoHeight * scale;
+    const offsetX = (renderedWidth - videoRect.width) / 2;
+    const offsetY = (renderedHeight - videoRect.height) / 2;
+
+    const sourceX = Math.max(0, (guideRect.left - videoRect.left + offsetX) / scale);
+    const sourceY = Math.max(0, (guideRect.top - videoRect.top + offsetY) / scale);
+    const sourceWidth = Math.min(video.videoWidth - sourceX, guideRect.width / scale);
+    const sourceHeight = Math.min(video.videoHeight - sourceY, guideRect.height / scale);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(sourceWidth));
+    canvas.height = Math.max(1, Math.round(sourceHeight));
+    const context = canvas.getContext('2d');
+    context.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('Cannot capture camera image'));
+        return;
+      }
+
+      resolve(new File([blob], fileName, { type: 'image/jpeg' }));
+    }, 'image/jpeg', 0.92);
+  });
 }
 
 function fileToDataUrl(file) {
@@ -221,10 +321,11 @@ async function readMeterDigitsWithTyphoon(file) {
             {
               type: 'text',
               text: [
-                'Extract only the mechanical odometer-style meter reading from the rectangular digit window.',
-                'Read the large digit wheels from left to right. Ignore gauge labels, dial numbers, units, logos, screws, borders, and pointers.',
-                'The reading is a whole-number counter, not a decimal value. Never return punctuation, separators, or a decimal point in digits.',
-                'If a character looks like a dot or separator inside the digit window, inspect it as an uncertain digit and choose the most likely numeral.',
+                'Extract only the primary meter reading value from the rectangular LCD or odometer digit window.',
+                'Read the main large digits from left to right. Ignore labels, button text, warnings, units, logos, screws, borders, pointers, and small secondary numbers.',
+                'For LCD readings, preserve the decimal point exactly where it appears between digits. Do not collapse a value like 523.867 into 523867.',
+                'For mechanical odometer readings, include a decimal point only when it is visibly part of the meter value.',
+                'If a dot-like mark is only a border, scratch, screw, or separator outside the digit value, ignore it.',
                 'Return compact JSON only: {"digits":"...", "confidence": 0-100}. If no meter reading is visible, use {"digits":"", "confidence":0}.'
               ].join(' ')
             },
@@ -311,13 +412,13 @@ function App() {
   const [authSession, setAuthSession] = useState(() => readAuthSession());
   const [active, setActive] = useState(0);
   const [selectedFile, setSelectedFile] = useState('FM-20260604-002.jpg');
-  const [userInput, setUserInput] = useState('099240');
+  const [userInput, setUserInput] = useState('');
   const [uploadedImage, setUploadedImage] = useState('');
   const [showStepOnePayload, setShowStepOnePayload] = useState(false);
   const [ocrState, setOcrState] = useState({
     status: 'idle',
-    digits: '099248',
-    confidence: 93.1,
+    digits: '',
+    confidence: 0,
     error: '',
     rawText: ''
   });
@@ -329,28 +430,27 @@ function App() {
     const isError = ocrState.status === 'error';
     const ocr = active >= 3 && hasOcrResult ? ocrState.digits || '-' : '-';
     const confidence = active >= 3 && hasOcrResult ? ocrState.confidence : 0;
-    const userDigits = normalizeDigits(userInput);
-    const ocrDigits = normalizeDigits(ocr);
+    const userValue = normalizeReadingValue(userInput);
+    const ocrValue = normalizeReadingValue(ocr);
     let status = 'PROCESSING';
     let difference = '-';
 
     if (isError && active >= 3) {
       status = 'ERROR';
     } else if (active >= 3 && hasOcrResult) {
-      if (!ocrDigits) {
+      if (!ocrValue) {
         status = 'NO_METER_FOUND';
       } else if (confidence > 0 && confidence < 85) {
         status = 'LOW_CONFIDENCE';
       } else {
-        status = ocrDigits === userDigits ? 'PASS' : 'FAIL';
+        status = readingsMatch(ocr, userInput) ? 'PASS' : 'FAIL';
       }
     } else if (isReading) {
       status = 'PROCESSING';
     }
 
-    if (active >= 5 && ocrDigits && userDigits) {
-      const diffValue = Number(ocrDigits) - Number(userDigits);
-      difference = diffValue > 0 ? `+${diffValue}` : String(diffValue);
+    if (active >= 5 && ocrValue && userValue) {
+      difference = formatReadingDifference(ocr, userInput);
     }
 
     return { confidence, ocr, status, difference, error: ocrState.error };
@@ -368,7 +468,7 @@ function App() {
       vessel: stepOneDefaults.vessel,
       captureDate: stepOneDefaults.captureDate,
       userInput,
-      normalizedUserInput: normalizeDigits(userInput)
+      normalizedUserInput: normalizeReadingValue(userInput)
     },
     ocrRequest: {
       provider: 'Typhoon OCR',
@@ -400,6 +500,7 @@ function App() {
         error: '',
         rawText: ocr.rawText
       });
+      setUserInput(ocr.digits);
     } catch (error) {
       setUploadedImage(URL.createObjectURL(file));
       setOcrState({
@@ -677,26 +778,107 @@ function StepBody({
   payloadPreview,
   showPayloadPreview
 }) {
+  const galleryInputRef = useRef(null);
+  const videoRef = useRef(null);
+  const guideRef = useRef(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraStream, setCameraStream] = useState(null);
+  const [cameraError, setCameraError] = useState('');
+
+  useEffect(() => {
+    if (!cameraOpen) {
+      return undefined;
+    }
+
+    let activeStream = null;
+
+    async function startCamera() {
+      setCameraError('');
+
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error('Camera is not supported by this browser');
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false
+        });
+        activeStream = stream;
+        setCameraStream(stream);
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (error) {
+        setCameraError(error.message || 'Cannot open camera');
+      }
+    }
+
+    startCamera();
+
+    return () => {
+      stopMediaStream(activeStream);
+      setCameraStream(null);
+    };
+  }, [cameraOpen]);
+
+  const handleGalleryFile = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (file) {
+      setSelectedFile(file.name);
+      onImageUpload(file);
+    }
+  };
+
+  const handleCameraCapture = async () => {
+    if (!videoRef.current || !guideRef.current) {
+      return;
+    }
+
+    try {
+      setCameraError('');
+      const file = await cropVideoFrameToFile(videoRef.current, guideRef.current);
+      setCameraOpen(false);
+      setSelectedFile(file.name);
+      onImageUpload(file);
+    } catch (error) {
+      setCameraError(error.message || 'Cannot capture meter reading');
+    }
+  };
+
+  const closeCamera = () => {
+    setCameraOpen(false);
+    setCameraError('');
+  };
+
   if (active === 0) {
     return (
       <div className="stepBody stepOneStack">
         <div className="uploadGrid">
-          <label className="dropZone">
+          <div className="dropZone">
             <Image size={30} />
             <span>{selectedFile}</span>
             {ocrState.status === 'reading' && <small>Reading digits with Typhoon OCR...</small>}
+            <div className="uploadActions">
+              <button className="primaryButton" type="button" onClick={() => setCameraOpen(true)}>
+                <Camera size={18} />
+                <span>Camera</span>
+              </button>
+              <button className="secondaryButton" type="button" onClick={() => galleryInputRef.current?.click()}>
+                <Upload size={18} />
+                <span>Choose Image</span>
+              </button>
+            </div>
             <input
+              ref={galleryInputRef}
               type="file"
               accept="image/*"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) {
-                  setSelectedFile(file.name);
-                  onImageUpload(file);
-                }
-              }}
+              onChange={handleGalleryFile}
             />
-          </label>
+          </div>
           <div className="formStack">
             <label>
               Vessel
@@ -708,7 +890,7 @@ function StepBody({
             </label>
             <label>
               User Input
-              <input value={userInput} onChange={(event) => setUserInput(event.target.value)} inputMode="numeric" />
+              <input value={userInput} onChange={(event) => setUserInput(event.target.value)} inputMode="decimal" />
             </label>
           </div>
         </div>
@@ -723,6 +905,43 @@ function StepBody({
             </div>
             <pre>{JSON.stringify(payloadPreview, null, 2)}</pre>
           </section>
+        )}
+        {cameraOpen && (
+          <div className="cameraOverlay" role="dialog" aria-modal="true" aria-label="Camera capture">
+            <div className="cameraPanel">
+              <div className="cameraHeader">
+                <div>
+                  <p className="panelKicker">Camera</p>
+                  <h3>Align Meter Reading</h3>
+                </div>
+                <button className="iconButton" type="button" aria-label="Close camera" onClick={closeCamera}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="cameraStage">
+                <video ref={videoRef} autoPlay muted playsInline />
+                <div className="cameraShade" aria-hidden="true" />
+                <div className="meterGuide" ref={guideRef} aria-hidden="true">
+                  <span>Meter value only</span>
+                </div>
+              </div>
+              {cameraError && (
+                <div className="loginError" role="alert">
+                  <AlertTriangle size={17} />
+                  <span>{cameraError}</span>
+                </div>
+              )}
+              <div className="cameraActions">
+                <button className="secondaryButton" type="button" onClick={closeCamera}>
+                  <span>Cancel</span>
+                </button>
+                <button className="primaryButton" type="button" onClick={handleCameraCapture} disabled={!cameraStream}>
+                  <Camera size={18} />
+                  <span>Capture</span>
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     );
@@ -765,13 +984,13 @@ function StepBody({
   }
 
   if (active === 4) {
-    const digitsOnly = /^\d+$/.test(result.ocr);
-    const lengthValid = result.ocr.length >= 4;
+    const numericValue = /^\d+(?:\.\d+)?$/.test(result.ocr);
+    const lengthValid = normalizeDigits(result.ocr).length >= 4;
     const confidenceValid = result.confidence >= 85 || result.confidence === 0;
 
     return (
       <div className="stepBody validationList">
-        <ValidationLine label="Digits only" pass={digitsOnly} detail="OCR candidate is numeric after correction review" />
+        <ValidationLine label="Numeric value" pass={numericValue} detail="OCR candidate may include one decimal point" />
         <ValidationLine label="Length validation" pass={lengthValid} detail="At least 4 digits expected" />
         <ValidationLine label="Confidence threshold" pass={confidenceValid} detail={`${result.confidence}% confidence`} />
       </div>
