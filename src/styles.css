@@ -1,6 +1,6 @@
 :root {
   color: #17211d;
-  background: #f4f6f4;
+  background: #f5f7fb;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -31,10 +31,11 @@ button {
   min-height: 100vh;
   padding: 24px;
   background:
-    linear-gradient(90deg, rgba(32, 51, 47, 0.07) 1px, transparent 1px),
-    linear-gradient(rgba(32, 51, 47, 0.07) 1px, transparent 1px),
-    #eef3f0;
-  background-size: 36px 36px;
+    linear-gradient(135deg, rgba(38, 96, 83, 0.08), rgba(32, 73, 117, 0.08)),
+    linear-gradient(90deg, rgba(32, 51, 47, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(32, 51, 47, 0.06) 1px, transparent 1px),
+    #f3f6fa;
+  background-size: auto, 36px 36px, 36px 36px;
 }
 
 .loginPanel {
@@ -88,8 +89,10 @@ button {
 
 .appShell {
   display: grid;
-  grid-template-columns: 128px minmax(0, 1fr);
+  grid-template-columns: 88px minmax(0, 1fr);
   min-height: 100vh;
+  background:
+    linear-gradient(180deg, #f7f9fb, #eef3f6);
 }
 
 .sideRail {
@@ -102,7 +105,8 @@ button {
   height: 100vh;
   padding: 16px 12px;
   color: #eaf4ef;
-  background: #1d312c;
+  background: #172925;
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.06);
 }
 
 .brandMark,
@@ -153,7 +157,7 @@ button {
 }
 
 .railUserName {
-  display: flex;
+  display: grid;
   align-items: center;
   justify-content: center;
   gap: 7px;
@@ -167,7 +171,8 @@ button {
   font-weight: 900;
 }
 
-.railUserName span {
+.railUserName span:last-child {
+  max-width: 48px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -176,7 +181,7 @@ button {
 
 .workspace {
   min-width: 0;
-  padding: 24px;
+  padding: 28px;
 }
 
 .topBar,
@@ -192,7 +197,37 @@ button {
 
 .topBar {
   align-items: flex-end;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
+}
+
+.topActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.statusButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 13px;
+  color: #24433b;
+  border: 1px solid #c9d8d2;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.liveDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #2fb172;
+  box-shadow: 0 0 0 4px rgba(47, 177, 114, 0.16);
 }
 
 .eyebrow,
@@ -222,11 +257,18 @@ h2 {
   font-size: 1.12rem;
 }
 
+h3 {
+  margin: 0;
+  color: #17251f;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
 .kpiStrip {
   display: grid;
   grid-template-columns: repeat(4, minmax(105px, 1fr));
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: 10px;
+  margin-bottom: 18px;
   overflow-x: auto;
   padding-bottom: 2px;
 }
@@ -240,6 +282,7 @@ h2 {
   border: 1px solid #d9e1dd;
   border-radius: 8px;
   background: #ffffff;
+  box-shadow: 0 12px 32px rgba(31, 45, 39, 0.05);
 }
 
 .metric {
@@ -298,13 +341,13 @@ h2 {
 }
 
 .metric.info .metricIcon {
-  color: #24506b;
-  background: #e1eff7;
+  color: #26557c;
+  background: #e5f0fb;
 }
 
 .metric.info {
-  border-color: #bdd9eb;
-  background: #eff8fd;
+  border-color: #bfd9ee;
+  background: #f1f7fd;
 }
 
 .metric.neutral .metricIcon {
@@ -342,18 +385,21 @@ dt,
 
 .workflow {
   display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
 }
 
 .node {
   display: grid;
-  grid-template-columns: 34px 42px minmax(0, 1fr);
+  grid-template-columns: 32px minmax(0, 1fr);
+  grid-template-areas:
+    "number copy"
+    "icon copy";
   align-items: center;
-  gap: 12px;
-  min-height: 92px;
-  padding: 14px;
+  gap: 8px 11px;
+  min-height: 96px;
+  padding: 13px;
   text-align: left;
   color: #2d3f38;
   border: 1px solid #d9e1dd;
@@ -366,7 +412,7 @@ dt,
 .node.current {
   border-color: #247257;
   background: #f4fbf7;
-  box-shadow: inset 4px 0 0 #247257, 0 10px 26px rgba(31, 45, 39, 0.08);
+  box-shadow: inset 3px 0 0 #247257, 0 12px 28px rgba(31, 45, 39, 0.09);
 }
 
 .node.done {
@@ -377,8 +423,9 @@ dt,
 .nodeNumber {
   display: inline-grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  grid-area: number;
+  width: 30px;
+  height: 30px;
   color: #5c6d65;
   border: 1px solid #d8e1dd;
   border-radius: 999px;
@@ -400,8 +447,9 @@ dt,
 }
 
 .nodeIcon {
-  width: 42px;
-  height: 42px;
+  grid-area: icon;
+  width: 32px;
+  height: 32px;
   color: #24433b;
   border-radius: 8px;
   background: #dfece7;
@@ -411,6 +459,10 @@ dt,
 .nodeCopy strong,
 .nodeCopy small {
   display: block;
+}
+
+.nodeCopy {
+  grid-area: copy;
 }
 
 .nodeCopy strong {
@@ -431,8 +483,8 @@ dt,
 
 .mainGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 390px;
+  gap: 18px;
   align-items: stretch;
 }
 
@@ -467,6 +519,12 @@ dt,
   gap: 16px;
 }
 
+.stepOneStack {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
 .dropZone {
   display: grid;
   place-items: center;
@@ -478,11 +536,13 @@ dt,
   border-radius: 8px;
   background: #f8fbf9;
   cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
 }
 
 .dropZone:hover {
   border-color: #247257;
   background: #f1f8f4;
+  box-shadow: inset 0 0 0 1px rgba(36, 114, 87, 0.08);
 }
 
 .dropZone input {
@@ -530,6 +590,57 @@ input {
 input:focus {
   outline: 3px solid rgba(36, 114, 87, 0.18);
   border-color: #247257;
+}
+
+.jsonPreview {
+  overflow: hidden;
+  border: 1px solid #cddbd5;
+  border-radius: 8px;
+  background: #101b18;
+  box-shadow: 0 12px 28px rgba(20, 34, 29, 0.12);
+}
+
+.jsonPreviewHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: #172925;
+}
+
+.jsonPreviewHeader .panelKicker {
+  color: #9ab5ab;
+}
+
+.jsonPreviewHeader h3 {
+  color: #f4fbf7;
+}
+
+.jsonPreviewHeader span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 9px;
+  color: #102820;
+  border-radius: 999px;
+  background: #7bd9a8;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.jsonPreview pre {
+  max-height: 280px;
+  margin: 0;
+  overflow: auto;
+  padding: 14px;
+  color: #d8f4e6;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.83rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .twoColumn,
@@ -716,6 +827,7 @@ input:focus {
 .primaryButton {
   color: #ffffff;
   background: #247257;
+  box-shadow: 0 8px 18px rgba(36, 114, 87, 0.18);
 }
 
 .primaryButton:hover {
@@ -730,7 +842,7 @@ input:focus {
 
 .reviewPanel {
   display: grid;
-  grid-template-rows: minmax(270px, 1fr) auto;
+  grid-template-rows: minmax(280px, 1fr) auto;
   gap: 14px;
 }
 
@@ -739,18 +851,22 @@ input:focus {
   place-items: center;
   min-height: 280px;
   border-radius: 8px;
-  background: #eef2ef;
+  background:
+    linear-gradient(145deg, rgba(27, 39, 45, 0.08), rgba(39, 89, 73, 0.08)),
+    #eef3f5;
 }
 
 .phoneFrame {
   position: relative;
   overflow: hidden;
-  width: min(230px, 80%);
-  aspect-ratio: 9 / 14;
-  padding: 22px 16px;
-  border: 8px solid #25332f;
+  width: min(310px, 86%);
+  aspect-ratio: 4 / 3;
+  padding: 22px;
+  border: 8px solid #26343a;
   border-radius: 8px;
-  background: #d7ddd9;
+  background:
+    linear-gradient(145deg, #314148, #536269),
+    #d7ddd9;
   box-shadow: 0 18px 36px rgba(31, 43, 38, 0.16);
 }
 
@@ -775,18 +891,18 @@ input:focus {
 .meterBody {
   display: grid;
   align-content: center;
-  gap: 24px;
+  gap: 20px;
   width: 100%;
   height: 100%;
   padding: 18px;
   border-radius: 4px;
-  background: #aeb8b2;
+  background: rgba(223, 229, 225, 0.9);
 }
 
 .lcdBox {
   display: grid;
   place-items: center;
-  height: 84px;
+  height: 92px;
   color: #061610;
   border: 2px solid #3b4842;
   border-radius: 4px;
@@ -794,8 +910,8 @@ input:focus {
 }
 
 .lcdBox.detected {
-  outline: 4px solid #d2a128;
-  outline-offset: 5px;
+  outline: 3px solid #d4a43c;
+  outline-offset: 6px;
 }
 
 .lcdBox span {
@@ -1043,10 +1159,6 @@ th {
 }
 
 @media (max-width: 1180px) {
-  .workflow {
-    grid-template-columns: repeat(3, minmax(160px, 1fr));
-  }
-
   .mainGrid {
     grid-template-columns: 1fr;
   }
@@ -1093,7 +1205,12 @@ th {
     flex-direction: column;
   }
 
+  .topActions {
+    justify-content: stretch;
+  }
+
   .stepControls > *,
+  .topActions > *,
   .sectionHeader .secondaryButton {
     width: 100%;
   }
@@ -1104,13 +1221,8 @@ th {
   .reviewPanel {
     grid-template-columns: 1fr;
   }
-
-  .workflow {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .phoneFrame {
-    width: min(220px, 76%);
+    width: min(320px, 84%);
   }
 
   .assistantDock {
@@ -1120,12 +1232,12 @@ th {
 }
 
 @media (max-width: 560px) {
-  .workflow {
-    grid-template-columns: 1fr;
-  }
-
   .node {
     min-height: 84px;
+  }
+
+  .workflow {
+    grid-template-columns: 1fr;
   }
 
   .assistantDock {

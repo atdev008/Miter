@@ -128,6 +128,12 @@ const TYPHOON_BASE_URL = import.meta.env.VITE_TYPHOON_BASE_URL || 'https://api.o
 const TYPHOON_API_KEY = import.meta.env.VITE_TYPHOON_API_KEY || '';
 const TYPHOON_OCR_MODEL = import.meta.env.VITE_TYPHOON_OCR_MODEL || 'typhoon-ocr';
 const TYPHOON_CHAT_MODEL = import.meta.env.VITE_TYPHOON_CHAT_MODEL || 'typhoon-v2.1-12b-instruct';
+const AUTH_STORAGE_KEY = 'miter.auth.session';
+
+const stepOneDefaults = {
+  vessel: 'MT Chao Phraya',
+  captureDate: '2026-06-04 08:27'
+};
 
 const thaiDigits = {
   '๐': '0',
@@ -161,6 +167,30 @@ function extractMeterDigits(value = '') {
   return digitCandidates[0] || normalizeDigits(normalizedText);
 }
 
+function readAuthSession() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const stored = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    const session = stored ? JSON.parse(stored) : null;
+    return session?.username ? session : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveAuthSession(username) {
+  const session = { username };
+  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+  return session;
+}
+
+function clearAuthSession() {
+  window.localStorage.removeItem(AUTH_STORAGE_KEY);
+}
+
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -190,7 +220,13 @@ async function readMeterDigitsWithTyphoon(file) {
           content: [
             {
               type: 'text',
-              text: 'Extract only the fuel meter reading digits from this image. Return compact JSON only: {"digits":"...", "confidence": 0-100}. If no meter reading is visible, use {"digits":"", "confidence":0}.'
+              text: [
+                'Extract only the mechanical odometer-style meter reading from the rectangular digit window.',
+                'Read the large digit wheels from left to right. Ignore gauge labels, dial numbers, units, logos, screws, borders, and pointers.',
+                'The reading is a whole-number counter, not a decimal value. Never return punctuation, separators, or a decimal point in digits.',
+                'If a character looks like a dot or separator inside the digit window, inspect it as an uncertain digit and choose the most likely numeral.',
+                'Return compact JSON only: {"digits":"...", "confidence": 0-100}. If no meter reading is visible, use {"digits":"", "confidence":0}.'
+              ].join(' ')
             },
             {
               type: 'image_url',
@@ -272,12 +308,12 @@ async function askTyphoonAssistant(question, context) {
 }
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentUser, setCurrentUser] = useState('');
+  const [authSession, setAuthSession] = useState(() => readAuthSession());
   const [active, setActive] = useState(0);
   const [selectedFile, setSelectedFile] = useState('FM-20260604-002.jpg');
   const [userInput, setUserInput] = useState('099240');
   const [uploadedImage, setUploadedImage] = useState('');
+  const [showStepOnePayload, setShowStepOnePayload] = useState(false);
   const [ocrState, setOcrState] = useState({
     status: 'idle',
     digits: '099248',
@@ -320,9 +356,32 @@ function App() {
     return { confidence, ocr, status, difference, error: ocrState.error };
   }, [active, ocrState, userInput]);
 
+  const stepOnePayload = useMemo(() => ({
+    workflow: 'fuel-meter-image-verification',
+    fromStep: steps[0].id,
+    nextStep: steps[1].id,
+    image: {
+      fileName: selectedFile,
+      source: uploadedImage ? 'uploaded-file' : 'sample-file'
+    },
+    meterData: {
+      vessel: stepOneDefaults.vessel,
+      captureDate: stepOneDefaults.captureDate,
+      userInput,
+      normalizedUserInput: normalizeDigits(userInput)
+    },
+    ocrRequest: {
+      provider: 'Typhoon OCR',
+      model: TYPHOON_OCR_MODEL,
+      status: ocrState.status,
+      digits: ocrState.digits,
+      confidence: ocrState.confidence
+    }
+  }), [ocrState.confidence, ocrState.digits, ocrState.status, selectedFile, uploadedImage, userInput]);
+
   const handleImageUpload = async (file) => {
     setSelectedFile(file.name);
-    setActive(3);
+    setShowStepOnePayload(false);
     setOcrState({
       status: 'reading',
       digits: '',
@@ -353,13 +412,26 @@ function App() {
     }
   };
 
-  const goBack = () => setActive((value) => Math.max(0, value - 1));
-  const goNext = () => setActive((value) => Math.min(steps.length - 1, value + 1));
+  const goBack = () => {
+    setShowStepOnePayload(false);
+    setActive((value) => Math.max(0, value - 1));
+  };
+  const goNext = () => {
+    if (active === 0 && !showStepOnePayload) {
+      setShowStepOnePayload(true);
+      return;
+    }
+
+    setShowStepOnePayload(false);
+    setActive((value) => Math.min(steps.length - 1, value + 1));
+  };
+
+  const isAuthenticated = Boolean(authSession);
+  const currentUser = authSession?.username || '';
 
   if (!isAuthenticated) {
     return <LoginPage onLogin={(username) => {
-      setCurrentUser(username);
-      setIsAuthenticated(true);
+      setAuthSession(saveAuthSession(username));
     }} />;
   }
 
@@ -388,8 +460,8 @@ function App() {
             aria-label="Sign out"
             title="Sign out"
             onClick={() => {
-              setIsAuthenticated(false);
-              setCurrentUser('');
+              clearAuthSession();
+              setAuthSession(null);
             }}
           >
             <LogOut size={20} />
@@ -402,6 +474,16 @@ function App() {
           <div>
             <p className="eyebrow">Fuel Meter Image Verification</p>
             <h1>Batch OCR Review</h1>
+          </div>
+          <div className="topActions" aria-label="Batch controls">
+            <button className="statusButton" type="button">
+              <span className="liveDot" aria-hidden="true" />
+              OCR Service Online
+            </button>
+            <button className="primaryButton" type="button">
+              <Upload size={18} />
+              <span>New Batch</span>
+            </button>
           </div>
         </header>
 
@@ -434,6 +516,8 @@ function App() {
               setUserInput={setUserInput}
               result={result}
               ocrState={ocrState}
+              payloadPreview={stepOnePayload}
+              showPayloadPreview={showStepOnePayload}
             />
             <div className="stepControls">
               <button className="iconButton" onClick={goBack} disabled={active === 0} aria-label="Back">
@@ -563,7 +647,7 @@ function Metric({ icon: Icon, label, value, tone }) {
 function Workflow({ active, setActive }) {
   return (
     <nav className="workflow" aria-label="OCR workflow">
-      {steps.slice(0, 6).map((step, index) => {
+      {steps.map((step, index) => {
         const Icon = step.icon;
         const state = index < active ? 'done' : index === active ? 'current' : 'pending';
         return (
@@ -589,41 +673,57 @@ function StepBody({
   userInput,
   setUserInput,
   result,
-  ocrState
+  ocrState,
+  payloadPreview,
+  showPayloadPreview
 }) {
   if (active === 0) {
     return (
-      <div className="stepBody uploadGrid">
-        <label className="dropZone">
-          <Image size={30} />
-          <span>{selectedFile}</span>
-          {ocrState.status === 'reading' && <small>Reading digits with Typhoon OCR...</small>}
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) {
-                setSelectedFile(file.name);
-                onImageUpload(file);
-              }
-            }}
-          />
-        </label>
-        <div className="formStack">
-          <label>
-            Vessel
-            <input value="MT Chao Phraya" readOnly />
+      <div className="stepBody stepOneStack">
+        <div className="uploadGrid">
+          <label className="dropZone">
+            <Image size={30} />
+            <span>{selectedFile}</span>
+            {ocrState.status === 'reading' && <small>Reading digits with Typhoon OCR...</small>}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  setSelectedFile(file.name);
+                  onImageUpload(file);
+                }
+              }}
+            />
           </label>
-          <label>
-            Capture Date
-            <input value="2026-06-04 08:27" readOnly />
-          </label>
-          <label>
-            User Input
-            <input value={userInput} onChange={(event) => setUserInput(event.target.value)} inputMode="numeric" />
-          </label>
+          <div className="formStack">
+            <label>
+              Vessel
+              <input value={stepOneDefaults.vessel} readOnly />
+            </label>
+            <label>
+              Capture Date
+              <input value={stepOneDefaults.captureDate} readOnly />
+            </label>
+            <label>
+              User Input
+              <input value={userInput} onChange={(event) => setUserInput(event.target.value)} inputMode="numeric" />
+            </label>
+          </div>
         </div>
+        {showPayloadPreview && (
+          <section className="jsonPreview" aria-label="JSON payload preview">
+            <div className="jsonPreviewHeader">
+              <div>
+                <p className="panelKicker">Next payload</p>
+                <h3>JSON ที่จะส่งไป Step 2</h3>
+              </div>
+              <span>Preview</span>
+            </div>
+            <pre>{JSON.stringify(payloadPreview, null, 2)}</pre>
+          </section>
+        )}
       </div>
     );
   }
